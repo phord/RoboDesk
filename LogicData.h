@@ -23,10 +23,12 @@ class LogicData
 //  int rx_pin;
   int tx_pin;
   bool active = false;
-  
-  public:
 
   typedef unsigned long micros_t;
+  micros_t timer;  // calculated time of previous step-end
+  micros_t start;  // time of Open()
+  
+  public:
 
   enum { SPACE=0, MARK=1 };
 
@@ -39,65 +41,82 @@ class LogicData
     digitalWrite(tx_pin, HIGH); // turn on pullups
   }
 
-  void send_bit(bool bit) {
+  void SendBit(bool bit) {
     digitalWrite(tx_pin, bit);
   }
-  
-  void send_bit(bool bit, micros_t & timer, uint16_t ms) {
-    send_bit(bit);
-    micros_t t = micros_t(ms)*1000;
-  
+
+  void MicroDelay(micros_t us) {
     // spin-wait until timer advances
     while (true) {
       micros_t now = micros();
       now -= timer;
-      if (now >= t) break;
+      if (now >= us) break;
       // TODO: if (t-now > 50) usleep(t-now-50);
     }
-    timer += t;    
+    timer += us;
   }
   
-  void space(micros_t & timer, uint16_t ms=LOGICDATA_MIN_START_BIT) {
-    send_bit(SPACE, timer, ms);
+  void Delay(uint16_t ms) {
+    MicroDelay(micros_t(ms)*1000);
   }
   
-  void start(micros_t & timer) {
-    active = true;
-    space(timer, LOGICDATA_MIN_START_BIT);
+  void SendBit(bool bit, uint16_t ms) {
+    SendBit(bit);
+    Delay(ms);
   }
   
-  void stop() {
-    send_bit(MARK); // IDLE
-    active = false;
+  void Space(uint16_t ms=LOGICDATA_MIN_START_BIT) {
+    SendBit(SPACE, ms);
   }
   
-  void Send(uint32_t data, micros_t & timer) {
-    start(timer);
+  void SendStartBit() {
+    Space(LOGICDATA_MIN_START_BIT);
+  }
+  
+  void Stop() {
+    SendBit(MARK); // IDLE-CLOSED
+  }
+
+  void Send(uint32_t data) {
+    SendStartBit();
   
     for (uint32_t i = 0x80000000 ; i; i/=2) {
-      send_bit((i&data)?SPACE:MARK, timer, 1);
+      SendBit((i&data)?SPACE:MARK, 1);
     }
-  
-    // Caller must call stop() to return to IDLE
+    
+    SendBit(SPACE); // IDLE-OPEN
+  }
+
+  void OpenChannel() {
+    active = true;
+    start = timer = micros();
+    SendBit(SPACE);
+  }
+
+  void CloseChannel() {
+    // Send a SPACE at least long enough so our command-channel was open for 500ms, or
+    // just start-bit length if we've already been open that long.
+
+    micros_t delta = timer-start;
+    if (delta/1000 + LOGICDATA_MIN_START_BIT < LOGICDATA_MIN_WINDOW_MS) {
+      timer=start;
+      Space(LOGICDATA_MIN_WINDOW_MS);
+    } else {
+      Space(LOGICDATA_MIN_START_BIT);
+    }
+    Stop();
+
+    active = false;
   }
   
   void Send(uint32_t * data, unsigned count) {
     if (!count) return;
-  
-    micros_t timer = micros();
-    micros_t start = timer;
+
+    OpenChannel();
     for (unsigned i = 0; i != count; i++) {
-      Send(data[i], timer);
+      Send(data[i]);
     }
-    
-    micros_t delta = timer-start;
-    if (delta/1000 < LOGICDATA_MIN_WINDOW_MS - LOGICDATA_MIN_START_BIT) {
-      timer=start;
-      space(timer, LOGICDATA_MIN_WINDOW_MS);
-    } else {
-      space(timer, LOGICDATA_MIN_START_BIT);
-    }
-    stop();
+    CloseChannel();   
   }
 };
 
