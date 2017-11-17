@@ -30,3 +30,6 @@
 *.exe
 *.out
 *.app
+
+# My local toolkit
+PirateScope-master/

@@ -27,7 +27,7 @@ class LogicData
   typedef unsigned long micros_t;
   micros_t timer;  // calculated time of previous step-end
   micros_t start;  // time of Open()
-  
+
   public:
 
   enum { SPACE=0, MARK=1 };
@@ -38,7 +38,7 @@ class LogicData
 
   void Begin() {
     pinMode(tx_pin, OUTPUT);
-    digitalWrite(tx_pin, HIGH); // turn on pullups
+    SendBit(MARK); // IDLE-CLOSED
   }
 
   void SendBit(bool bit) {
@@ -55,35 +55,35 @@ class LogicData
     }
     timer += us;
   }
-  
+
   void Delay(uint16_t ms) {
     MicroDelay(micros_t(ms)*1000);
   }
-  
+
   void SendBit(bool bit, uint16_t ms) {
     SendBit(bit);
     Delay(ms);
   }
-  
+
   void Space(uint16_t ms=LOGICDATA_MIN_START_BIT) {
     SendBit(SPACE, ms);
   }
-  
+
   void SendStartBit() {
     Space(LOGICDATA_MIN_START_BIT);
   }
-  
+
   void Stop() {
     SendBit(MARK); // IDLE-CLOSED
   }
 
   void Send(uint32_t data) {
     SendStartBit();
-  
+
     for (uint32_t i = 0x80000000 ; i; i/=2) {
       SendBit((i&data)?SPACE:MARK, 1);
     }
-    
+
     SendBit(SPACE); // IDLE-OPEN
   }
 
@@ -108,7 +108,7 @@ class LogicData
 
     active = false;
   }
-  
+
   void Send(uint32_t * data, unsigned count) {
     if (!count) return;
 
@@ -116,7 +116,7 @@ class LogicData
     for (unsigned i = 0; i != count; i++) {
       Send(data[i]);
     }
-    CloseChannel();   
+    CloseChannel();
   }
 };
 

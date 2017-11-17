@@ -28,7 +28,7 @@ const uint8_t MOD_TX_interrupt  = 0;
 
 // Input/Output
 const uint8_t MOD_HS1 = 0;
-const uint8_t MOD_HS2 = 3;
+const uint8_t MOD_HS2 = 3;  // FIXME: pin3 is unusable (connected to USB; idles at 2.5v)
 const uint8_t MOD_HS3 = 4;
 const uint8_t MOD_HS4 = 5;
 
@@ -55,10 +55,11 @@ uint32_t test_display_on[] = {
     // display ON; display WORD
     0x40611400,
     0x40601dfe,
+    0x40641400,
     0x40681400,
     0x40600515,
     0x40649dfb,
-    
+
     0x40600495,
     0x40600594,
     0x40600455,
@@ -110,16 +111,50 @@ uint32_t test_display_off[] = {
     0x40649dfb,
     0x406e1400
 };
+uint32_t test_display_set[] = {
+    // Enters "SET" mode; display commands have no effect until undone; Display: "S -"
+    0x40641400,
+
+    // Set 3 chosen; Display: "S 3"
+    0x406c1d80,
+
+    // "S 3" idle
+    0x40601dfe,
+    0x406c1d80,
+    0x40649dfb,
+
+    // ----------------------------------------
+    // Display "120"
+    0x40681400,
+    0x4060043c,
+    0x40649dfb,
+    // ----------------------------------------
+    // Display "120"
+    0x40601dfe,
+    0x4060043c,
+    0x40649dfb,
+    // ----------------------------------------
+    // Display "120"
+    0x40601dfe,
+    0x4060043c,
+    0x40649dfb,
+    // ----------------------------------------
+    // Display off
+    0x406e1400
+};
 
 
 void setup() {
   pinMode(MOD_TX, INPUT);
   digitalWrite(MOD_TX, HIGH); // turn on pullups (weird that this is needed, but it is)
 
-  pinMode(MOD_HS1, INPUT_PULLUP);
-  pinMode(MOD_HS2, INPUT_PULLUP);
-  pinMode(MOD_HS3, INPUT_PULLUP);
-  pinMode(MOD_HS4, INPUT_PULLUP);
+  pinMode(MOD_HS1, INPUT);
+  pinMode(MOD_HS2, INPUT);
+  pinMode(MOD_HS3, INPUT);
+  pinMode(MOD_HS4, INPUT);
+
+//  pinMode(MOD_HS2, OUTPUT);
+//  digitalWrite(MOD_HS2, LOW); // force pin low HACK
 
   dataPassThrough();
   attachInterrupt(MOD_TX_interrupt, dataPassThrough, CHANGE);
@@ -132,8 +167,10 @@ void setup() {
   ld.Send(test_display_on, size);
   ld_started = false;
 
+#ifdef HACK
   // HACK testing
   ld.OpenChannel();
+#endif
 }
 
 uint32_t sample = 0x40600400;
@@ -142,6 +179,7 @@ void loop() {
   // Monitor panel buttons for our commands and take over when we see one
   // TODO
 
+#ifdef HACK
   // HACK testing
   ld.Send(sample);
   ld.Send(sample);
@@ -149,4 +187,5 @@ void loop() {
   ld.Delay(300);
   ++sample;
   sample = sample & ~(0x00001000);
+#endif
 }
