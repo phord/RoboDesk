@@ -81,10 +81,10 @@ void LogicData::PinChange(bool level) {
 uint32_t LogicData::ReadTrace() {
   unsigned end;
 
-  // XXX: cli
+  noInterrupts();
   end=q.tail;
   bool level = ((q.size() & 1)==0) ^ !prev_level;
-  // XXX: seti
+  interrupts();
   
   micros_t t;
   unsigned i=0;
@@ -114,14 +114,14 @@ uint32_t LogicData::ReadTrace() {
   if (mask) return 0;
 
   // We decoded a word and it consumed i samples
-  // XXX cli
+  noInterrupts();
   if (end == q.tail) {
     q.drop(i-1);
   } else {
     // race fail; return 0 and let the caller try again later
     acc = 0;
   }
-  // XXX seti
+  interrupts();
 
   return acc;
 }
