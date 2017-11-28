@@ -18,106 +18,84 @@
 #include <stdint.h>
 #include "Arduino.h"
 
+typedef unsigned long micros_t;
+
+#define TRACE_HISTORY_MAX 64 // powers-of-two are faster in MOD
+#define Q_MAX TRACE_HISTORY_MAX
+
+//--------------------------------------------------
+// queue
+//
+struct mque {
+  // embedded deque; push to head; pop from tail
+  micros_t trace[Q_MAX];
+  unsigned head = 0;
+  unsigned tail = 0;
+
+  unsigned next(unsigned x);
+  bool empty();
+  bool full();
+  unsigned size();
+
+  // destructive push; pushes even if full
+  bool push(micros_t t);
+
+  // destructive pop; no-op if empty
+  bool pop(micros_t * t);
+
+  // drop elements from the tail of the queue; no range-checking!
+  void drop(int n);
+
+  // non-destructive indexed peek
+  bool peek(unsigned index, micros_t * t);
+};
+  
+// queue
+//
+//--------------------------------------------------
+
 class LogicData
 {
 //  int rx_pin;
   int tx_pin;
   bool active = false;
 
-  typedef unsigned long micros_t;
   micros_t timer;  // calculated time of previous step-end
   micros_t start;  // time of Open()
 
+  mque q;
+  
   public:
 
   enum { SPACE=0, MARK=1 };
 
+  //
   LogicData(int tx) : tx_pin(tx) {}
 
   bool is_active() { return active; }
 
-  void Begin() {
-    pinMode(tx_pin, OUTPUT);
-    SendBit(MARK); // IDLE-CLOSED
-  }
+  void Begin();
 
-  void SendBit(bool bit) {
-    digitalWrite(tx_pin, bit);
-  }
+  // Receive
+  micros_t prev_bit = 0;
+  bool prev_level = HIGH;
+ 
+  void PinChange(bool level);
 
-  void MicroDelay(micros_t us) {
-    // spin-wait until timer advances
-    while (true) {
-      micros_t now = micros();
-      now -= timer;
-      if (now >= us) break;
-      // TODO: if (t-now > 50) usleep(t-now-50);
-    }
-    timer += us;
-  }
+  uint32_t ReadTrace();
 
-  void Delay(uint16_t ms) {
-    MicroDelay(micros_t(ms)*1000);
-  }
-
-  void SendBit(bool bit, uint16_t ms) {
-    SendBit(bit);
-    Delay(ms);
-  }
-
-  void Space(uint16_t ms=LOGICDATA_MIN_START_BIT) {
-    SendBit(SPACE, ms);
-  }
-
-  void SendStartBit() {
-    Space(LOGICDATA_MIN_START_BIT);
-  }
-
-  void Stop() {
-    SendBit(MARK); // IDLE-CLOSED
-  }
-
-  void Send(uint32_t data) {
-    SendStartBit();
-
-    for (uint32_t i = 0x80000000 ; i; i/=2) {
-      SendBit((i&data)?SPACE:MARK, 1);
-    }
-
-    SendBit(SPACE); // IDLE-OPEN
-  }
-
-  void OpenChannel() {
-    active = true;
-    start = timer = micros();
-    SendBit(SPACE);
-  }
-
-  void CloseChannel() {
-    // Send a SPACE at least long enough so our command-channel was open for 500ms, or
-    // just start-bit length if we've already been open that long.
-
-    micros_t delta = timer-start;
-    if (delta/1000 + LOGICDATA_MIN_START_BIT < LOGICDATA_MIN_WINDOW_MS) {
-      timer=start;
-      Space(LOGICDATA_MIN_WINDOW_MS);
-    } else {
-      Space(LOGICDATA_MIN_START_BIT);
-    }
-    Stop();
-
-    active = false;
-  }
-
-  void Send(uint32_t * data, unsigned count) {
-    if (!count) return;
-
-    OpenChannel();
-    for (unsigned i = 0; i != count; i++) {
-      Send(data[i]);
-    }
-    CloseChannel();
-  }
+  // Transmit
+  void SendBit(bool bit);
+  void MicroDelay(micros_t us);
+  void Delay(uint16_t ms);
+  void SendBit(bool bit, uint16_t ms);
+  void Space(uint16_t ms=LOGICDATA_MIN_START_BIT);
+  void SendStartBit();
+  void Stop();
+  void Send(uint32_t data);
+  void OpenChannel();
+  void CloseChannel();
+  void Send(uint32_t * data, unsigned count);
 };
 
 //
