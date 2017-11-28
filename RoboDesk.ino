@@ -40,8 +40,8 @@ const uint8_t INTF_TX  = 1;
 
 LogicData ld(INTF_TX);
 
-static bool ld_started = false;
 
+//-- Pass through mode sends input signal straight to output
 inline void passThrough(uint8_t out, uint8_t in) {
   digitalWrite(out, digitalRead(in));
 }
@@ -49,6 +49,11 @@ inline void passThrough(uint8_t out, uint8_t in) {
 // Pass module TX straight through to interface RX
 void dataPassThrough() {
   if (!ld.is_active()) passThrough(INTF_TX, MOD_TX);
+}
+
+//-- Buffered mode parses input words and sends them to output separately
+void dataGather() {
+  ld.PinChange(HIGH == digitalRead(MOD_TX));
 }
 
 
@@ -143,6 +148,7 @@ uint32_t test_display_set[] = {
     // Display off
     0x406e1400
 };
+//#define HACK
 
 
 void setup() {
@@ -157,16 +163,17 @@ void setup() {
 //  pinMode(MOD_HS2, OUTPUT);
 //  digitalWrite(MOD_HS2, LOW); // force pin low HACK
 
-  dataPassThrough();
-  attachInterrupt(MOD_TX_interrupt, dataPassThrough, CHANGE);
+//  dataPassThrough();
+//  attachInterrupt(MOD_TX_interrupt, dataPassThrough, CHANGE);
+
+  dataGather();
+  attachInterrupt(MOD_TX_interrupt, dataGather, CHANGE);
 
   ld.Begin();
   delay(1000);
 
-  ld_started = true;
   unsigned size = sizeof(test_display_on) / sizeof(test_display_on[0]);
   ld.Send(test_display_on, size);
-  ld_started = false;
 
 #ifdef HACK
   // HACK testing
@@ -179,6 +186,19 @@ uint32_t sample = 0x40600400;
 void loop() {
   // Monitor panel buttons for our commands and take over when we see one
   // TODO
+
+  #define MAX_MESSAGE 5
+  uint32_t msg[MAX_MESSAGE];
+  int i=0;
+  for (; i<MAX_MESSAGE; i++){
+    msg[i] = ld.ReadTrace();
+    if (!msg[i]) break;
+  }
+
+  // Forward messages to HS interface
+  if (i) {
+    ld.Send(msg, i);
+  }
 
 #ifdef HACK
   // HACK testing
