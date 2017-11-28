@@ -148,8 +148,8 @@ uint32_t test_display_set[] = {
     // Display off
     0x406e1400
 };
-//#define HACK
 
+#define HACK
 
 void setup() {
   pinMode(MOD_TX, INPUT);
@@ -174,14 +174,9 @@ void setup() {
 
   unsigned size = sizeof(test_display_on) / sizeof(test_display_on[0]);
   ld.Send(test_display_on, size);
-
-#ifdef HACK
-  // HACK testing
-  ld.OpenChannel();
-#endif
 }
 
-uint32_t sample = 0x40600400;
+uint32_t sample = 0x40600495;
 
 void loop() {
   // Monitor panel buttons for our commands and take over when we see one
@@ -201,11 +196,13 @@ void loop() {
   }
 
 #ifdef HACK
+  ld.OpenChannel();
   // HACK testing
   ld.Send(sample);
   ld.Send(sample);
   ld.Send(sample);
   ld.Delay(300);
+  ld.CloseChannel();
   ++sample;
   sample = sample & ~(0x00001000);
 #endif
