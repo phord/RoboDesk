@@ -68,13 +68,21 @@ void check_display() {
 void read_latch() {
   if (latched) return;
 
-  if (digitalRead(MOD_HS1)) latched += HS1;
-  if (digitalRead(MOD_HS2)) latched += HS2;
-  if (digitalRead(MOD_HS3)) latched += HS3;
-  if (digitalRead(MOD_HS4)) latched += HS4;
+  unsigned long t = millis();
+  do {
+    if (digitalRead(MOD_HS1)) latched |= HS1;
+    if (digitalRead(MOD_HS2)) latched |= HS2;
+    if (digitalRead(MOD_HS3)) latched |= HS3;
+    if (digitalRead(MOD_HS4)) latched |= HS4;
 
-  // Ignore UP, DOWN and SET buttons
-  if (latched == UP || latched == DOWN || latched == SET) latched = 0;
+    // Ignore UP, DOWN and SET buttons
+    if (latched == UP || latched == DOWN || latched == SET) latched = 0;
+
+    // keep checking display
+    check_display();
+
+    // Loop until signal held for 20ms to debounce
+  } while (latched && millis()-t < 20);
   
   if (latched) last_signal = millis();
 }
