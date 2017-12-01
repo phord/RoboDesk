@@ -21,11 +21,10 @@ const uint8_t INTF_HS4 = P9;
 #else // digistump ATTiny85
 
 // Input
-const uint8_t MOD_TX  = 2;
-const uint8_t MOD_TX_interrupt  = 0;
+const uint8_t MOD_TX  = 5;
 
 // Input/Output
-const uint8_t MOD_HS1 = 5;
+const uint8_t MOD_HS1 = 2;
 const uint8_t MOD_HS2 = 0;
 const uint8_t MOD_HS3 = 4;
 const uint8_t MOD_HS4 = 1;
@@ -47,13 +46,6 @@ enum {
 
 unsigned latched = 0;
 
-
-//-- Buffered mode parses input words and sends them to output separately
-void dataGather() {
-  last_signal = millis();
-}
-
-
 void setup() {
   pinMode(MOD_TX, INPUT);
   digitalWrite(MOD_TX, HIGH); // turn on pullups (weird that this is needed, but it is)
@@ -62,11 +54,15 @@ void setup() {
   pinMode(MOD_HS2, INPUT);
   pinMode(MOD_HS3, INPUT);
   pinMode(MOD_HS4, INPUT);
+}
 
-  attachInterrupt(MOD_TX_interrupt, dataGather, CHANGE);
+int last_state = 0;
+void check_display() {
+  int state = digitalRead(MOD_TX);
+  if (state == last_state) return;
 
-  delay(100);
-  last_signal = 0;
+  last_state = state;
+  last_signal = millis();
 }
 
 void read_latch() {
@@ -111,10 +107,10 @@ void hold_latch() {
   digitalWrite(MOD_HS4, (latched & HS4) ? HIGH : LOW);
 }
 
-
 void loop() {
   // Monitor panel buttons for our commands and take over when we see one
 
+  check_display();
   read_latch();
   hold_latch();
 }
