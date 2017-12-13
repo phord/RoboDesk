@@ -78,26 +78,27 @@ unsigned read_buttons() {
   return buttons;
 }
 
+unsigned long debounce = 0;
+unsigned prev_buttons = 0;
 void read_latch() {
   if (latched) return;
 
-  unsigned prev_latched = 0;
-  unsigned long t = millis();
-  do {
-    latched = read_buttons();
+  if (!prev_buttons) debounce = millis();
 
-    if (!prev_latched) prev_latched = latched;
+  unsigned diff = prev_buttons;
+  prev_buttons = read_buttons();
 
-    // Only latch MEM buttons
-    if (latched != MEM1 && latched != MEM2 && latched != MEM3) latched = 0;
+  // Only latch MEM buttons
+  if (prev_buttons != MEM1 && prev_buttons != MEM2 && prev_buttons != MEM3) prev_buttons = 0;
 
-    // keep checking display
-    check_display();
-
-    // Loop until signal held for 20ms to debounce
-  } while (latched && latched == prev_latched && millis()-t < 20);
+  // Ignore spurious signals
+  if (diff && diff != prev_buttons) prev_buttons = 0;
   
-  if (latched) last_signal = millis();
+  // latch when signal is stable for 20ms
+  if (millis()-debounce > 20) {
+    latched = prev_buttons;
+    last_signal = millis();
+  }
 }
 
 void break_latch() {
@@ -106,6 +107,12 @@ void break_latch() {
   pinMode(MOD_HS2, INPUT);
   pinMode(MOD_HS3, INPUT);
   pinMode(MOD_HS4, INPUT);
+}
+
+void latch_pin(int pin)
+{
+  pinMode(pin, OUTPUT);
+  digitalWrite(pin, HIGH);
 }
 
 void hold_latch() {
@@ -125,15 +132,10 @@ void hold_latch() {
     return;
   }
 
-  if (latched & HS1) pinMode(MOD_HS1, OUTPUT);
-  if (latched & HS2) pinMode(MOD_HS2, OUTPUT);
-  if (latched & HS3) pinMode(MOD_HS3, OUTPUT);
-  if (latched & HS4) pinMode(MOD_HS4, OUTPUT);
-
-  if (latched & HS1) digitalWrite(MOD_HS1, HIGH);
-  if (latched & HS2) digitalWrite(MOD_HS2, HIGH);
-  if (latched & HS3) digitalWrite(MOD_HS3, HIGH);
-  if (latched & HS4) digitalWrite(MOD_HS4, HIGH);
+  if (latched & HS1) latch_pin(MOD_HS1);
+  if (latched & HS2) latch_pin(MOD_HS2);
+  if (latched & HS3) latch_pin(MOD_HS3);
+  if (latched & HS4) latch_pin(MOD_HS4);
 }
 
 void loop() {
