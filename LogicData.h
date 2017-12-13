@@ -12,30 +12,34 @@
 // First two bits are always(?) 01 (SPACE MARK)
 // All observed words start with 010000000110 (0x406; SPACE MARK SPACEx7 MARKx2 SPACE)
 
-#define LOGICDATA_MIN_WINDOW_MS  500
+#define LOGICDATA_MIN_WINDOW_MS  50 // 500
 #define LOGICDATA_MIN_START_BIT  50
 
 #include <stdint.h>
 #include "Arduino.h"
 
-typedef unsigned long micros_t;
+typedef uint32_t micros_t;
 
-#define TRACE_HISTORY_MAX 64 // powers-of-two are faster in MOD
+#define TRACE_HISTORY_MAX 80 // powers-of-two are faster in MOD
 #define Q_MAX TRACE_HISTORY_MAX
+
+#define BIG_IDLE (micros_t(-1))         // An eternity
+#define IDLE_TIME (micros_t(1)<<16)     // if the signal is idle for this long, we consider it an eternity
 
 //--------------------------------------------------
 // queue
 //
+typedef uint16_t index_t;
 struct mque {
   // embedded deque; push to head; pop from tail
   micros_t trace[Q_MAX];
-  unsigned head = 0;
-  unsigned tail = 0;
+  index_t head = 0;
+  index_t tail = 0;
 
-  unsigned next(unsigned x);
+  index_t next(index_t x);
   bool empty();
   bool full();
-  unsigned size();
+  index_t size();
 
   // destructive push; pushes even if full
   bool push(micros_t t);
@@ -44,10 +48,10 @@ struct mque {
   bool pop(micros_t * t);
 
   // drop elements from the tail of the queue; no range-checking!
-  void drop(int n);
+  void drop(index_t n);
 
   // non-destructive indexed peek
-  bool peek(unsigned index, micros_t * t);
+  bool peek(index_t index, micros_t * t);
 };
   
 // queue
@@ -59,17 +63,20 @@ class LogicData
 //  int rx_pin;
   int tx_pin;
   bool active = false;
+  bool pin_idle = false;
 
   micros_t timer;  // calculated time of previous step-end
   micros_t start;  // time of Open()
 
   mque q;
-  
+
+  micros_t prev_bit = 0;
+  bool prev_level = HIGH;
+   
   public:
 
   enum { SPACE=0, MARK=1 };
 
-  //
   LogicData(int tx) : tx_pin(tx) {}
 
   bool is_active() { return active; }
@@ -77,10 +84,8 @@ class LogicData
   void Begin();
 
   // Receive
-  micros_t prev_bit = 0;
-  bool prev_level = HIGH;
- 
   void PinChange(bool level);
+  void Service();
 
   uint32_t ReadTrace();
 

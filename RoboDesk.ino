@@ -28,13 +28,13 @@ const uint8_t MOD_TX  = 2;
 const uint8_t MOD_TX_interrupt  = 0;
 
 // Input/Output
-const uint8_t MOD_HS1 = 0;
+const uint8_t MOD_HS1 = 1;
 const uint8_t MOD_HS2 = 3;  // FIXME: pin3 is unusable (connected to USB; idles at 2.5v)
 const uint8_t MOD_HS3 = 4;
 const uint8_t MOD_HS4 = 5;
 
 // Output
-const uint8_t INTF_TX  = 1;
+const uint8_t INTF_TX  = 0;
 
 #endif
 
@@ -54,6 +54,7 @@ void dataPassThrough() {
 //-- Buffered mode parses input words and sends them to output separately
 void dataGather() {
   ld.PinChange(HIGH == digitalRead(MOD_TX));
+//  passThrough(5, MOD_TX);
 }
 
 
@@ -65,7 +66,10 @@ uint32_t test_display_on[] = {
     0x40681400,
     0x40600515,
     0x40649dfb,
+    0x40600495
+};
 
+uint32_t test_display_stream[] = {
     0x40600495,
     0x40600594,
     0x40600455,
@@ -149,7 +153,7 @@ uint32_t test_display_set[] = {
     0x406e1400
 };
 
-#define HACK
+//#define HACK
 
 void setup() {
   pinMode(MOD_TX, INPUT);
@@ -160,6 +164,9 @@ void setup() {
   pinMode(MOD_HS3, INPUT);
   pinMode(MOD_HS4, INPUT);
 
+  // HACK
+  pinMode(5, OUTPUT);
+  
 //  pinMode(MOD_HS2, OUTPUT);
 //  digitalWrite(MOD_HS2, LOW); // force pin low HACK
 
@@ -182,17 +189,14 @@ void loop() {
   // Monitor panel buttons for our commands and take over when we see one
   // TODO
 
-  #define MAX_MESSAGE 5
-  uint32_t msg[MAX_MESSAGE];
-  int i=0;
-  for (; i<MAX_MESSAGE; i++){
-    msg[i] = ld.ReadTrace();
-    if (!msg[i]) break;
-  }
-
+  uint32_t msg = ld.ReadTrace();
+  
   // Forward messages to HS interface
-  if (i) {
-    ld.Send(msg, i);
+  if (msg>0) {
+    ld.OpenChannel();
+    ld.Send(msg);
+  } else {
+    ld.CloseChannel();
   }
 
 #ifdef HACK
