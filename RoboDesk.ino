@@ -43,6 +43,9 @@ enum {
 #define UP    HS1
 #define DOWN  HS2
 #define SET   (HS1 + HS2)
+#define MEM1  HS3
+#define MEM2  HS4
+#define MEM3  (HS2 + HS4)
 
 unsigned latched = 0;
 
@@ -75,8 +78,8 @@ void read_latch() {
     if (digitalRead(MOD_HS3)) latched |= HS3;
     if (digitalRead(MOD_HS4)) latched |= HS4;
 
-    // Ignore UP, DOWN and SET buttons
-    if (latched == UP || latched == DOWN || latched == SET) latched = 0;
+    // Only latch MEM buttons
+    if (latched != MEM1 && latched != MEM2 && latched != MEM3) latched = 0;
 
     // keep checking display
     check_display();
