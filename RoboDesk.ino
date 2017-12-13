@@ -68,15 +68,25 @@ void check_display() {
   last_signal = millis();
 }
 
+unsigned read_buttons() {
+  unsigned buttons = 0;
+  if (digitalRead(MOD_HS1)) buttons |= HS1;
+  if (digitalRead(MOD_HS2)) buttons |= HS2;
+  if (digitalRead(MOD_HS3)) buttons |= HS3;
+  if (digitalRead(MOD_HS4)) buttons |= HS4;
+
+  return buttons;
+}
+
 void read_latch() {
   if (latched) return;
 
+  unsigned prev_latched = 0;
   unsigned long t = millis();
   do {
-    if (digitalRead(MOD_HS1)) latched |= HS1;
-    if (digitalRead(MOD_HS2)) latched |= HS2;
-    if (digitalRead(MOD_HS3)) latched |= HS3;
-    if (digitalRead(MOD_HS4)) latched |= HS4;
+    latched = read_buttons();
+
+    if (!prev_latched) prev_latched = latched;
 
     // Only latch MEM buttons
     if (latched != MEM1 && latched != MEM2 && latched != MEM3) latched = 0;
@@ -85,7 +95,7 @@ void read_latch() {
     check_display();
 
     // Loop until signal held for 20ms to debounce
-  } while (latched && millis()-t < 20);
+  } while (latched && latched == prev_latched && millis()-t < 20);
   
   if (latched) last_signal = millis();
 }
@@ -99,6 +109,8 @@ void break_latch() {
 }
 
 void hold_latch() {
+  if (!latched) return;
+
   unsigned long delta = millis() - last_signal;
 
   // Let go after 1.5 seconds with no signals
@@ -107,15 +119,21 @@ void hold_latch() {
     return;
   }
 
-  pinMode(MOD_HS1, OUTPUT);
-  pinMode(MOD_HS2, OUTPUT);
-  pinMode(MOD_HS3, OUTPUT);
-  pinMode(MOD_HS4, OUTPUT);
+  // Break the latch if some other button is detected
+  if ((read_buttons() | latched) != latched) {
+    break_latch();
+    return;
+  }
 
-  digitalWrite(MOD_HS1, (latched & HS1) ? HIGH : LOW);
-  digitalWrite(MOD_HS2, (latched & HS2) ? HIGH : LOW);
-  digitalWrite(MOD_HS3, (latched & HS3) ? HIGH : LOW);
-  digitalWrite(MOD_HS4, (latched & HS4) ? HIGH : LOW);
+  if (latched & HS1) pinMode(MOD_HS1, OUTPUT);
+  if (latched & HS2) pinMode(MOD_HS2, OUTPUT);
+  if (latched & HS3) pinMode(MOD_HS3, OUTPUT);
+  if (latched & HS4) pinMode(MOD_HS4, OUTPUT);
+
+  if (latched & HS1) digitalWrite(MOD_HS1, HIGH);
+  if (latched & HS2) digitalWrite(MOD_HS2, HIGH);
+  if (latched & HS3) digitalWrite(MOD_HS3, HIGH);
+  if (latched & HS4) digitalWrite(MOD_HS4, HIGH);
 }
 
 void loop() {
