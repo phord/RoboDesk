@@ -1,7 +1,7 @@
 # RoboDesk
 Arduino code for LOGICDATA protocol and remote handset hacking for automated standing desk
 
-This is my attempt to reverse-engineer the LOGICDATA protocol used in devices from www.logicdata.at, and to implement unapproved device extensions to interact with the HS port on their robotic desks.
+The `simple` branch contains only button-latching code that listens to the changing display and lets go of the MEM buttons when the display stops changing.
 
 # Warning
 This interface probably violates the LOGICDATA warranty.  Note this warning in their literature:
