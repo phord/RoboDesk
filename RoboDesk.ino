@@ -21,12 +21,12 @@ const uint8_t INTF_HS4 = P9;
 #else // digistump ATTiny85
 
 // Input
-const uint8_t MOD_TX  = 5;
+const uint8_t MOD_TX  = 2;
 
 // Input/Output
-const uint8_t MOD_HS1 = 2;
-const uint8_t MOD_HS2 = 0;
-const uint8_t MOD_HS3 = 4;
+const uint8_t MOD_HS1 = 4;
+const uint8_t MOD_HS2 = 3;
+const uint8_t MOD_HS3 = 0;
 const uint8_t MOD_HS4 = 1;
 
 #endif
