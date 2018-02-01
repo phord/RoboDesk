@@ -1,35 +1,6 @@
-#ifdef OAK
-// Input
-const uint8_t MOD_TX  = P5;
+#include "pins_trinket_pro.h"
 
-// Output
-const uint8_t MOD_HS1 = P11;
-const uint8_t MOD_HS2 = P10;
-const uint8_t MOD_HS3 = P6;
-const uint8_t MOD_HS4 = P4;
-//const uint8_t MOD_RX  = P5;
-
-// Output
-const uint8_t INTF_TX  = LED_BUILTIN;
-
-// Input
-const uint8_t INTF_HS1 = P6;
-const uint8_t INTF_HS2 = P7;
-const uint8_t INTF_HS3 = P8;
-const uint8_t INTF_HS4 = P9;
-
-#else // digistump ATTiny85
-
-// Input
-const uint8_t MOD_TX  = 2;
-
-// Input/Output
-const uint8_t MOD_HS1 = 4;
-const uint8_t MOD_HS2 = 3;
-const uint8_t MOD_HS3 = 0;
-const uint8_t MOD_HS4 = 1;
-
-#endif
+#define DISABLE_LATCHING
 
 unsigned long last_signal = 0;
 
@@ -51,12 +22,17 @@ unsigned latched = 0;
 
 void setup() {
   pinMode(MOD_TX, INPUT);
-  digitalWrite(MOD_TX, HIGH); // turn on pullups (weird that this is needed, but it is)
+//  digitalWrite(MOD_TX, HIGH); // turn on pullups (Needed for attiny85?)
 
   pinMode(MOD_HS1, INPUT);
   pinMode(MOD_HS2, INPUT);
   pinMode(MOD_HS3, INPUT);
   pinMode(MOD_HS4, INPUT);
+  #ifdef LED
+    pinMode(LED, OUTPUT);
+  #endif
+  Serial.begin(115200);
+  Serial.println("Robodesk v0.9  build: " __DATE__ " " __TIME__);
 }
 
 int last_state = 0;
@@ -69,11 +45,32 @@ void check_display() {
 }
 
 unsigned read_buttons() {
+  static unsigned prev = 0;
   unsigned buttons = 0;
   if (digitalRead(MOD_HS1)) buttons |= HS1;
   if (digitalRead(MOD_HS2)) buttons |= HS2;
   if (digitalRead(MOD_HS3)) buttons |= HS3;
   if (digitalRead(MOD_HS4)) buttons |= HS4;
+
+  if (buttons && prev!=buttons) {
+    Serial.print(buttons);
+    if (buttons & HS1) Serial.print(" HS1");
+    if (buttons & HS2) Serial.print(" HS2");
+    if (buttons & HS3) Serial.print(" HS3");
+    if (buttons & HS4) Serial.print(" HS4");
+
+    switch (buttons) {
+      case UP:    Serial.print("    UP");      break;
+      case DOWN:  Serial.print("    DOWN");    break;
+      case SET:   Serial.print("    SET");     break;
+      case MEM1:  Serial.print("    MEM1");    break;
+      case MEM2:  Serial.print("    MEM2");    break;
+      case MEM3:  Serial.print("    MEM3");    break;
+      default:    Serial.print(" ** UNKNOWN **");      break;
+    }
+    Serial.println("");
+  }
+  prev = buttons;
 
   return buttons;
 }
@@ -99,6 +96,11 @@ void read_latch() {
     latched = prev_buttons;
     last_signal = millis();
   }
+
+  if (latched) {
+    Serial.print(" LATCH ");
+    Serial.println(latched);
+  }
 }
 
 void break_latch() {
@@ -107,16 +109,25 @@ void break_latch() {
   pinMode(MOD_HS2, INPUT);
   pinMode(MOD_HS3, INPUT);
   pinMode(MOD_HS4, INPUT);
+  #ifdef LED
+    digitalWrite(LED, LOW);
+  #endif
 }
 
 void latch_pin(int pin)
 {
+#ifndef DISABLE_LATCHING
   pinMode(pin, OUTPUT);
   digitalWrite(pin, HIGH);
+#endif
 }
 
 void hold_latch() {
   if (!latched) return;
+
+  #ifdef LED
+    digitalWrite(LED, HIGH);
+  #endif
 
   unsigned long delta = millis() - last_signal;
 
