@@ -1,6 +1,6 @@
 #include "pins_trinket_pro.h"
 
-#define DISABLE_LATCHING
+//#define DISABLE_LATCHING
 
 unsigned long last_signal = 0;
 
@@ -17,12 +17,13 @@ enum {
 #define MEM1  HS3
 #define MEM2  HS4
 #define MEM3  (HS2 + HS4)
+#define NONE  0
 
 unsigned latched = 0;
 
 void setup() {
   pinMode(MOD_TX, INPUT);
-//  digitalWrite(MOD_TX, HIGH); // turn on pullups (Needed for attiny85?)
+//  digitalWrite(MOD_TX, HIGH); // turn on pullups (Needed for attiny85)
 
   pinMode(MOD_HS1, INPUT);
   pinMode(MOD_HS2, INPUT);
@@ -44,63 +45,78 @@ void check_display() {
   last_signal = millis();
 }
 
-unsigned read_buttons() {
+// Display anything that changed since last time
+void display_buttons(unsigned buttons, const char * msg = "") {
   static unsigned prev = 0;
+
+  if (msg[0] || prev!=buttons) {
+    Serial.print((buttons & HS1) ? " HS1" :  " ---");
+    Serial.print((buttons & HS2) ? " HS2" :  " ---");
+    Serial.print((buttons & HS3) ? " HS3" :  " ---");
+    Serial.print((buttons & HS4) ? " HS4" :  " ---");
+
+    switch (buttons) {
+      case UP:    Serial.print("    UP          ");    break;
+      case DOWN:  Serial.print("    DOWN        ");    break;
+      case SET:   Serial.print("    SET         ");    break;
+      case MEM1:  Serial.print("    MEM1        ");    break;
+      case MEM2:  Serial.print("    MEM2        ");    break;
+      case MEM3:  Serial.print("    MEM3        ");    break;
+      case NONE:  Serial.print("    ----        ");    break;
+      default:    Serial.print(" ** UNKNOWN **  ");    break;
+    }
+    Serial.println(msg);
+  }
+  prev = buttons;
+}
+
+unsigned read_buttons() {
   unsigned buttons = 0;
   if (digitalRead(MOD_HS1)) buttons |= HS1;
   if (digitalRead(MOD_HS2)) buttons |= HS2;
   if (digitalRead(MOD_HS3)) buttons |= HS3;
   if (digitalRead(MOD_HS4)) buttons |= HS4;
-
-  if (buttons && prev!=buttons) {
-    Serial.print(buttons);
-    if (buttons & HS1) Serial.print(" HS1");
-    if (buttons & HS2) Serial.print(" HS2");
-    if (buttons & HS3) Serial.print(" HS3");
-    if (buttons & HS4) Serial.print(" HS4");
-
-    switch (buttons) {
-      case UP:    Serial.print("    UP");      break;
-      case DOWN:  Serial.print("    DOWN");    break;
-      case SET:   Serial.print("    SET");     break;
-      case MEM1:  Serial.print("    MEM1");    break;
-      case MEM2:  Serial.print("    MEM2");    break;
-      case MEM3:  Serial.print("    MEM3");    break;
-      default:    Serial.print(" ** UNKNOWN **");      break;
-    }
-    Serial.println("");
-  }
-  prev = buttons;
-
+  
   return buttons;
 }
 
-unsigned long debounce = 0;
-unsigned prev_buttons = 0;
-void read_latch() {
-  if (latched) return;
-
-  if (!prev_buttons) debounce = millis();
+unsigned read_buttons_debounce() {
+  static unsigned long debounce = 0;
+  static unsigned prev_buttons = 0;
 
   unsigned diff = prev_buttons;
   prev_buttons = read_buttons();
 
-  // Only latch MEM buttons
-  if (prev_buttons != MEM1 && prev_buttons != MEM2 && prev_buttons != MEM3) prev_buttons = 0;
+  unsigned buttons = prev_buttons;
 
   // Ignore spurious signals
-  if (diff && diff != prev_buttons) prev_buttons = 0;
-  
-  // latch when signal is stable for 20ms
-  if (millis()-debounce > 20) {
-    latched = prev_buttons;
-    last_signal = millis();
+  if (diff && diff != prev_buttons) buttons = NONE;
+
+  // Reset timer if buttons are drifting or unpressed
+  if (!buttons) debounce = millis();
+
+  // ignore signal until stable for 20ms
+  if (millis()-debounce < 20) {
+    buttons = NONE;
   }
 
-  if (latched) {
-    Serial.print(" LATCH ");
-    Serial.println(latched);
-  }
+  display_buttons(buttons);
+  
+  return buttons;
+}
+
+void read_latch() {
+  if (latched) return;
+
+  latched = read_buttons_debounce();
+
+  // Only latch MEM buttons
+  if (latched != MEM1 && latched != MEM2 && latched != MEM3) latched = 0;
+
+  // Restart idle timer when we get an interesting button
+  if (latched) last_signal = millis();
+
+  if (latched) display_buttons(latched, "Latched");
 }
 
 void break_latch() {
@@ -109,9 +125,6 @@ void break_latch() {
   pinMode(MOD_HS2, INPUT);
   pinMode(MOD_HS3, INPUT);
   pinMode(MOD_HS4, INPUT);
-  #ifdef LED
-    digitalWrite(LED, LOW);
-  #endif
 }
 
 void latch_pin(int pin)
@@ -123,26 +136,45 @@ void latch_pin(int pin)
 }
 
 void hold_latch() {
-  if (!latched) return;
-
   #ifdef LED
-    digitalWrite(LED, HIGH);
+    digitalWrite(LED, !!latched);
   #endif
+
+  if (!latched) return;
 
   unsigned long delta = millis() - last_signal;
 
   // Let go after 1.5 seconds with no signals
   if (delta > 1500) {
+    display_buttons(latched, "Idle");
     break_latch();
     return;
   }
 
   // Break the latch if some other button is detected
-  if ((read_buttons() | latched) != latched) {
+  unsigned buttons = read_buttons();
+  if ((buttons | latched) != latched) {
     break_latch();
+    
+    display_buttons(buttons, "Interrupted");
+
+    #ifdef LED
+      // Blink angrily at the user for 3000ms
+      for (int i = 0 ; i < 60; i++) {
+        delay(50);
+        digitalWrite(LED, i&1);
+      }
+    #endif
+    
+    // HANG until no buttons are pressed anymore
+    while (buttons) {
+      buttons = read_buttons_debounce();
+    }
+
     return;
   }
 
+  // Re-assert latched buttons
   if (latched & HS1) latch_pin(MOD_HS1);
   if (latched & HS2) latch_pin(MOD_HS2);
   if (latched & HS3) latch_pin(MOD_HS3);
