@@ -40,4 +40,5 @@ unsigned read_buttons_debounce();
 
 Action get_action();
 Action get_action_enh();
+const char * action_str(Action action);
 
