@@ -26,6 +26,17 @@ typedef uint32_t micros_t;
 #define BIG_IDLE (micros_t(-1))         // An eternity
 #define IDLE_TIME (micros_t(1)<<16)     // if the signal is idle for this long, we consider it an eternity
 
+
+// Lock guard; cleans up on exit
+struct lock {
+  lock() {
+      noInterrupts();
+  }
+  ~lock() {
+      interrupts();
+  }
+};
+
 //--------------------------------------------------
 // queue
 //
@@ -71,7 +82,6 @@ class LogicData
   mque q;
 
   micros_t prev_bit = 0;
-  bool prev_level = HIGH;
    
   public:
 
@@ -88,6 +98,20 @@ class LogicData
   void Service();
 
   uint32_t ReadTrace();
+
+  // Calculate parity and set in lsb of message
+  static uint32_t Parity(uint32_t msg);
+  static bool CheckParity(uint32_t msg);
+  static const char * MsgType(uint32_t msg);
+  static const char * Decode(uint32_t msg);
+  
+  // debug: not threadsafe
+  index_t QueueSize(index_t &h, index_t &t){
+    lock _;
+    h = q.head;
+    t = q.tail;
+    return q.size(); 
+  }
 
   // Transmit
   void SendBit(bool bit);

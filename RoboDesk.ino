@@ -5,6 +5,7 @@
 //#define DISABLE_LATCHING
 
 unsigned long last_signal = 0;
+unsigned long last_action = 0;
 
 LogicData ld(INTF_TX);
 
@@ -29,17 +30,6 @@ void dataGather() {
 }
 
 
-
-uint32_t test_display_on[] = {
-    // display ON; display WORD
-    0x40611400,
-    0x40601dfe,
-    0x40641400,
-    0x40681400,
-    0x40600515,
-    0x40649dfb,
-    0x40600495
-};
 
 uint32_t test_display_stream[] = {
     0x40600495,
@@ -78,7 +68,6 @@ uint32_t test_display_stream[] = {
     0x4060051c,
     0x4060049c
 };
-
 uint32_t test_display_word[] = {
     // display word?
     0x40601dfe,
@@ -126,6 +115,7 @@ uint32_t test_display_set[] = {
 };
 
 unsigned latched = 0;
+unsigned long latch_time = 0;
 
 void setup() {
   pinMode(MOD_TX, INPUT);
@@ -142,8 +132,8 @@ void setup() {
   ld.Begin();
   delay(1000);
 
-  unsigned size = sizeof(test_display_on) / sizeof(test_display_on[0]);
-  ld.Send(test_display_on, size);
+//  unsigned size = sizeof(test_display_stream) / sizeof(test_display_stream[0]);
+//  ld.Send(test_display_stream, size);
 
   #ifdef LED
     pinMode(LED, OUTPUT);
@@ -161,18 +151,25 @@ void check_display() {
   last_signal = millis();
 }
 
+void latch(unsigned latch_pins, unsigned long max_latch_time = 15000) {
+  latched = latch_pins;
+  latch_time = max_latch_time;
+
+  // Restart idle timer when we get an interesting button
+  last_action = last_signal = millis();
+
+  display_buttons(latched, "Latched");
+}
+
 void read_latch() {
   if (latched) return;
 
-  latched = read_buttons_debounce();
+  auto buttons = read_buttons_debounce();
 
   // Only latch MEM buttons
-  if (latched != MEM1 && latched != MEM2 && latched != MEM3) latched = 0;
+  if (buttons != MEM1 && buttons != MEM2 && buttons != MEM3) buttons = 0;
 
-  // Restart idle timer when we get an interesting button
-  if (latched) last_signal = millis();
-
-  if (latched) display_buttons(latched, "Latched");
+  if (buttons) latch(buttons);
 }
 
 void break_latch() {
@@ -200,9 +197,24 @@ void hold_latch() {
 
   unsigned long delta = millis() - last_signal;
 
-  // Let go after 1.5 seconds with no signals
-  if (delta > 1500) {
+  unsigned long activity_timeout = (last_signal - last_action < 2000) ? 2500 : 500 ;
+  
+  // Let go after 500ms with no signals
+  if (delta > activity_timeout) {
+    Serial.print("Delta=");
+    Serial.print(delta);
+    Serial.print("  Timeout=");
+    Serial.println(activity_timeout);
     display_buttons(latched, "Idle");
+    break_latch();
+    return;
+  }
+
+  delta = millis() - last_action;
+
+  // Let go if latch timer expires
+  if (delta > latch_time) {
+    display_buttons(latched, "Timed out");
     break_latch();
     return;
   }
@@ -214,14 +226,6 @@ void hold_latch() {
     
     display_buttons(buttons, "Interrupted");
 
-    #ifdef LED
-      // Blink angrily at the user for 3000ms
-      for (int i = 0 ; i < 60; i++) {
-        delay(50);
-        digitalWrite(LED, i&1);
-      }
-    #endif
-    
     // HANG until no buttons are pressed anymore
     while (buttons) {
       buttons = read_buttons_debounce();
@@ -240,12 +244,52 @@ void hold_latch() {
 void loop() {
   // Monitor panel buttons for our commands and take over when we see one
 
+  if (!latched) {
+    Action action = get_action();
+    switch (action) {
+      case Mem1: case Mem1_Dbl: latch(MEM1); break;
+      case Mem2: case Mem2_Dbl: latch(MEM2); break;
+      case Mem3: case Mem3_Dbl: latch(MEM3); break;
+      case Up_Dbl:   latch(UP, 4000); break;
+      case Down_Dbl: latch(DOWN, 4000); break;
+      default: break;
+    }
+  }
+  
   check_display();
-  read_latch();
+  read_latch();  // Old button read method, kept to make MEM buttons smoother
   hold_latch();
- 
+
+//  static size_t prevQ = 0;
+//  index_t h, t;
+//  size_t Q = ld.QueueSize(h, t);
+//  if (Q != prevQ) {
+//    Serial.print("Q: t=");
+//    Serial.print(t);
+//    Serial.print(" h=");
+//    Serial.print(h);
+//    Serial.print(" size=");
+//    Serial.print(Q);
+//    Serial.print(" [");
+//    micros_t lead;
+//    size_t i=0;
+//    while (ld.q.peek(i++, &lead)) {
+//      Serial.print(lead);
+//      Serial.print(", ");
+//    }
+//    Serial.println("]");
+//    prevQ = Q;
+//  }
+  
+  static uint32_t prev = 0;
   uint32_t msg = ld.ReadTrace();
-  if ((msg & 0xFFFFF000) == 0x40600000) {
-    Serial.println(msg, HEX);
+  if (msg) {
+    uint32_t now = millis();
+    Serial.print(now - prev);
+    prev=now;
+    Serial.print("ms  ");
+    Serial.print(ld.MsgType(msg));
+    Serial.print(": ");
+    Serial.println(ld.Decode(msg));
   }
 }

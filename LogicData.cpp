@@ -38,32 +38,29 @@ void mque::push(micros_t t)
 // destructive pop; no-op if empty
 bool mque::pop(micros_t * t)
 {
-  noInterrupts();
+  lock _;
   if (empty()) return false;
   *t = trace[tail];
   tail = next(tail);
-  interrupts();
   return true;
 }
 
 // drop elements from the tail of the queue; no range-checking!
 void mque::drop(index_t n)
 {
-  noInterrupts();
+  lock _;
   tail += n;
   tail %= Q_MAX;  // TODO: Check if this is expensive
-  interrupts();
 }
 
 // non-destructive indexed peek
 bool mque::peek(index_t index, micros_t * t)
 {
+  lock _;
   if (index >= size()) return false;
-  noInterrupts();
   index += tail;
   index %= Q_MAX;
   *t = trace[index];
-  interrupts();
   return true;
 }
 
@@ -75,8 +72,10 @@ void LogicData::Begin() {
 }
 
 void LogicData::PinChange(bool level) {
-  if (level != prev_level) {
-    prev_level = level;
+  // Assumes interrupts disabled
+  // Expect HIGH level on even queue steps
+  bool sync = q.head & 1;
+  if (level == sync) {
     micros_t now = micros();
     if (pin_idle) {
       q.push(BIG_IDLE);
@@ -91,28 +90,51 @@ void LogicData::PinChange(bool level) {
 void LogicData::Service() {
   micros_t idle_time = micros() - prev_bit;
   if (!pin_idle && idle_time >= IDLE_TIME) {
-    noInterrupts();
+    lock _;
     if (micros() - prev_bit >= IDLE_TIME) {
       pin_idle = true;
     }
-    interrupts();
   }
 }
+
+// Calculate parity and set in lsb of message
+uint32_t LogicData::Parity(uint32_t msg) {
+  unsigned par_count = 0;
+  for (uint32_t mask = 2; mask ; mask <<= 2) {
+      par_count += msg & mask;
+  }
+  msg |= par_count & 1;
+  return msg;
+}
+
+bool LogicData::CheckParity(uint32_t msg) {
+  return Parity(msg) == msg;
+}
+
+//void LogicData::DumpQueue() {
+//  lock _;
+//  fini=q.tail;
+//  bool level = ((q.size() & 1)==0) ^ !prev_level;
+//}
 
 uint32_t LogicData::ReadTrace() {
   index_t fini;
 
-  noInterrupts();
-  fini=q.tail;
-  bool level = ((q.size() & 1)==0) ^ !prev_level;
-  interrupts();
+  {
+    lock _;
+    fini=q.tail;
+  }
 
+  bool level = !(fini & 1);
   micros_t t;
   index_t i=0;
 
-  //-- Find start-bit (idle)
+  //-- Find start-bit (idle-low followed by high-pulse shorter than 2-bits)
   for (; q.peek(i, &t); i++) {
-    if (!level && t > static_cast<micros_t>(40) * SAMPLE_RATE) break;
+    if (!level && t > static_cast<micros_t>(40) * SAMPLE_RATE) {
+      micros_t t1;
+      if (q.peek(i+1, &t1) && t1 < SAMPLE_RATE*2)  break;
+    }
     level = !level;
   }
 
@@ -135,16 +157,73 @@ uint32_t LogicData::ReadTrace() {
   if (mask) return 0;
 
   // We decoded a word and it consumed i samples
-  noInterrupts();
+  lock _;
   if (fini == q.tail) {
     q.drop(i-1);
   } else {
     // race fail; return 0 and let the caller try again later
     acc = 0;
   }
-  interrupts();
 
   return acc;
+}
+
+const char * LogicData::MsgType(uint32_t msg) {
+  if ((msg & 0xFFF00000) != 0x40600000) {
+    return "INVAL";
+  }
+
+  if (!CheckParity(msg)) {
+    return "PARIT";
+  }
+
+  // Display number
+  if ((msg & 0xFFE00) == 0x00400) {
+    return "NUMBR";
+  }
+
+  return "UKNWN";
+}
+
+static uint8_t ReverseNibble(uint8_t in) {
+  uint8_t ret = 0;
+  ret |= (in << 3) & 8;
+  ret |= (in << 1) & 4;
+  ret |= (in >> 1) & 2;
+  ret |= (in >> 3) & 1;
+  return ret;
+}
+
+static uint8_t ReverseByte(uint8_t in) {
+  return (ReverseNibble(in) << 4) + ReverseNibble(in>>4);
+}
+
+static uint16_t ReverseWord(uint16_t in) {
+  return (ReverseByte(in) << 8) + ReverseByte(in>>8);
+}
+
+const char * LogicData::Decode(uint32_t msg) {
+  static char buf[20];
+
+  // 0x40600400
+  // 0x20300200
+  //         ^^ display byte
+  //      ^^^    command
+  uint16_t w = ReverseWord(msg>>9)>>4;
+  uint8_t  b = ReverseByte(msg>>1);
+
+  if ((msg & 0xFFF00000) != 0x40600000) {
+    sprintf(buf, "%08lx ??", msg);
+  } else if (!CheckParity(msg)) {
+    sprintf(buf, "%08lx !", msg);
+  } else if (w == 0x400) {
+    // Display number
+      sprintf(buf, "%03u", b);
+  } else {
+    sprintf(buf, "%08lx  %03x %02x", msg, w, b);
+  }
+
+  return buf;
 }
 
 // Transmit
