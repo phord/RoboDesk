@@ -1,5 +1,8 @@
 // Input
 const uint8_t MOD_TX  = 3;  // Pin 3 on Trinket supports interrupts
+const uint8_t MOD_TX_interrupt  = 1;
+
+const uint8_t INTF_TX = 9;
 
 // Input/Output (v1.0 cable pins are arranged in this order)
 const uint8_t MOD_HS2 = 4;
