@@ -132,8 +132,8 @@ void setup() {
   ld.Begin();
   delay(1000);
 
-  unsigned size = sizeof(test_display_on) / sizeof(test_display_on[0]);
-  ld.Send(test_display_on, size);
+//  unsigned size = sizeof(test_display_stream) / sizeof(test_display_stream[0]);
+//  ld.Send(test_display_stream, size);
 
   #ifdef LED
     pinMode(LED, OUTPUT);
@@ -259,9 +259,37 @@ void loop() {
   check_display();
   read_latch();  // Old button read method, kept to make MEM buttons smoother
   hold_latch();
- 
+
+//  static size_t prevQ = 0;
+//  index_t h, t;
+//  size_t Q = ld.QueueSize(h, t);
+//  if (Q != prevQ) {
+//    Serial.print("Q: t=");
+//    Serial.print(t);
+//    Serial.print(" h=");
+//    Serial.print(h);
+//    Serial.print(" size=");
+//    Serial.print(Q);
+//    Serial.print(" [");
+//    micros_t lead;
+//    size_t i=0;
+//    while (ld.q.peek(i++, &lead)) {
+//      Serial.print(lead);
+//      Serial.print(", ");
+//    }
+//    Serial.println("]");
+//    prevQ = Q;
+//  }
+  
+  static uint32_t prev = 0;
   uint32_t msg = ld.ReadTrace();
-  if ((msg & 0xFFFFF000) == 0x40600000) {
-    Serial.println(msg, HEX);
+  if (msg) {
+    uint32_t now = millis();
+    Serial.print(now - prev);
+    prev=now;
+    Serial.print("ms  ");
+    Serial.print(ld.MsgType(msg));
+    Serial.print(": ");
+    Serial.println(ld.Decode(msg));
   }
 }

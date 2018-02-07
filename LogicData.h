@@ -82,7 +82,6 @@ class LogicData
   mque q;
 
   micros_t prev_bit = 0;
-  bool prev_level = HIGH;
    
   public:
 
@@ -99,6 +98,20 @@ class LogicData
   void Service();
 
   uint32_t ReadTrace();
+
+  // Calculate parity and set in lsb of message
+  static uint32_t Parity(uint32_t msg);
+  static bool CheckParity(uint32_t msg);
+  static const char * MsgType(uint32_t msg);
+  static const char * Decode(uint32_t msg);
+  
+  // debug: not threadsafe
+  index_t QueueSize(index_t &h, index_t &t){
+    lock _;
+    h = q.head;
+    t = q.tail;
+    return q.size(); 
+  }
 
   // Transmit
   void SendBit(bool bit);
