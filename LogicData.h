@@ -104,6 +104,10 @@ class LogicData
   static bool CheckParity(uint32_t msg);
   static const char * MsgType(uint32_t msg);
   static const char * Decode(uint32_t msg);
+
+  bool IsValid(uint32_t msg);
+  bool IsNumber(uint32_t msg);
+  uint8_t GetNumber(uint32_t msg);
   
   // debug: not threadsafe
   index_t QueueSize(index_t &h, index_t &t){

@@ -168,6 +168,17 @@ uint32_t LogicData::ReadTrace() {
   return acc;
 }
 
+bool LogicData::IsValid(uint32_t msg) {
+  if ((msg & 0xFFF00000) != 0x40600000) {
+    return false;
+  }
+  return CheckParity(msg);
+}
+
+bool LogicData::IsNumber(uint32_t msg) {
+  return IsValid(msg) && (msg & 0xFFE00) == 0x00400;
+}
+
 const char * LogicData::MsgType(uint32_t msg) {
   if ((msg & 0xFFF00000) != 0x40600000) {
     return "INVAL";
@@ -180,6 +191,11 @@ const char * LogicData::MsgType(uint32_t msg) {
   // Display number
   if ((msg & 0xFFE00) == 0x00400) {
     return "NUMBR";
+  }
+
+  // Display command
+  if ((msg & 0xFFFF) == 0x1400) {
+    return "DISPL";
   }
 
   return "UKNWN";
@@ -202,6 +218,13 @@ static uint16_t ReverseWord(uint16_t in) {
   return (ReverseByte(in) << 8) + ReverseByte(in>>8);
 }
 
+uint8_t LogicData::GetNumber(uint32_t msg) {
+  if (IsNumber(msg)) {
+    return ReverseByte(msg>>1);
+  }
+  return 0;
+}
+
 const char * LogicData::Decode(uint32_t msg) {
   static char buf[20];
 
@@ -219,6 +242,10 @@ const char * LogicData::Decode(uint32_t msg) {
   } else if (w == 0x400) {
     // Display number
       sprintf(buf, "%03u", b);
+  } else if (msg == 0x40611400) {
+      sprintf(buf, "Display ON");
+  } else if (msg == 0x406e1400) {
+      sprintf(buf, "Display OFF");
   } else {
     sprintf(buf, "%08lx  %03x %02x", msg, w, b);
   }
