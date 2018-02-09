@@ -5,7 +5,7 @@
 //#define DISABLE_LATCHING
 
 unsigned long last_signal = 0;
-unsigned long last_action = 0;
+unsigned long last_latch = 0;
 
 LogicData ld(INTF_TX);
 
@@ -114,9 +114,6 @@ uint32_t test_display_set[] = {
     0x406e1400
 };
 
-unsigned latched = 0;
-unsigned long latch_time = 0;
-
 void setup() {
   pinMode(MOD_TX, INPUT);
 //  digitalWrite(MOD_TX, HIGH); // turn on pullups (Needed for attiny85)
@@ -142,27 +139,39 @@ void setup() {
   Serial.println("Robodesk v0.9  build: " __DATE__ " " __TIME__);
 }
 
-int last_state = 0;
+// Record last time the display changed
 void check_display() {
-  int state = digitalRead(MOD_TX);
-  if (state == last_state) return;
+  static uint32_t prev = 0;
+  uint32_t msg = ld.ReadTrace();
+  if (msg) {
+    uint32_t now = millis();
+    Serial.print(now - prev);
+    prev=now;
+    Serial.print("ms  ");
+    Serial.print(ld.MsgType(msg));
+    Serial.print(": ");
+    Serial.println(ld.Decode(msg));
+  }
 
-  last_state = state;
-  last_signal = millis();
+  if (ld.IsNumber(msg)) {
+    static uint8_t prev_number;
+    auto display_num = ld.GetNumber(msg);
+    if (display_num != prev_number) {
+      prev_number = display_num;
+      last_signal = millis();
+    }
+  }
 }
 
 void latch(unsigned latch_pins, unsigned long max_latch_time = 15000) {
-  latched = latch_pins;
-  latch_time = max_latch_time;
+  set_latch(latch_pins, max_latch_time);
 
   // Restart idle timer when we get an interesting button
-  last_action = last_signal = millis();
-
-  display_buttons(latched, "Latched");
+  last_latch = last_signal = millis();
 }
 
 void read_latch() {
-  if (latched) return;
+  if (is_latched()) return;
 
   auto buttons = read_buttons_debounce();
 
@@ -172,56 +181,27 @@ void read_latch() {
   if (buttons) latch(buttons);
 }
 
-void break_latch() {
-  latched = 0;
-  pinMode(MOD_HS1, INPUT);
-  pinMode(MOD_HS2, INPUT);
-  pinMode(MOD_HS3, INPUT);
-  pinMode(MOD_HS4, INPUT);
-}
-
-void latch_pin(int pin)
-{
-#ifndef DISABLE_LATCHING
-  pinMode(pin, OUTPUT);
-  digitalWrite(pin, HIGH);
-#endif
-}
-
 void hold_latch() {
   #ifdef LED
-    digitalWrite(LED, !!latched);
+    digitalWrite(LED, is_latched());
   #endif
 
-  if (!latched) return;
+  if (!is_latched()) return;
 
   unsigned long delta = millis() - last_signal;
 
-  unsigned long activity_timeout = (last_signal - last_action < 2000) ? 2500 : 500 ;
+  unsigned long activity_timeout = (last_signal - last_latch < 2000) ? 2500 : 1500 ;
   
   // Let go after 500ms with no signals
   if (delta > activity_timeout) {
-    Serial.print("Delta=");
-    Serial.print(delta);
-    Serial.print("  Timeout=");
-    Serial.println(activity_timeout);
-    display_buttons(latched, "Idle");
-    break_latch();
-    return;
-  }
-
-  delta = millis() - last_action;
-
-  // Let go if latch timer expires
-  if (delta > latch_time) {
-    display_buttons(latched, "Timed out");
+    display_buttons(get_latched(), "Idle");
     break_latch();
     return;
   }
 
   // Break the latch if some other button is detected
   unsigned buttons = read_buttons();
-  if ((buttons | latched) != latched) {
+  if (buttons &&  buttons != get_latched()) {
     break_latch();
     
     display_buttons(buttons, "Interrupted");
@@ -234,17 +214,13 @@ void hold_latch() {
     return;
   }
 
-  // Re-assert latched buttons
-  if (latched & HS1) latch_pin(MOD_HS1);
-  if (latched & HS2) latch_pin(MOD_HS2);
-  if (latched & HS3) latch_pin(MOD_HS3);
-  if (latched & HS4) latch_pin(MOD_HS4);
+  // read and display button changes
+  read_buttons_debounce(); 
 }
 
-void loop() {
-  // Monitor panel buttons for our commands and take over when we see one
-
-  if (!latched) {
+// Check for single-click and double-click actions
+void check_actions() {
+  if (!is_latched()) {
     Action action = get_action();
     switch (action) {
       case Mem1: case Mem1_Dbl: latch(MEM1); break;
@@ -255,41 +231,38 @@ void loop() {
       default: break;
     }
   }
-  
+}
+
+#ifdef DEBUG_QUEUE
+void debug_queue() {
+  static size_t prevQ = 0;
+  index_t h, t;
+  size_t Q = ld.QueueSize(h, t);
+  if (Q != prevQ) {
+    Serial.print("Q: t=");
+    Serial.print(t);
+    Serial.print(" h=");
+    Serial.print(h);
+    Serial.print(" size=");
+    Serial.print(Q);
+    Serial.print(" [");
+    micros_t lead;
+    size_t i=0;
+    while (ld.q.peek(i++, &lead)) {
+      Serial.print(lead);
+      Serial.print(", ");
+    }
+    Serial.println("]");
+    prevQ = Q;
+  }
+}
+#endif
+
+void loop() {
+  // Monitor panel buttons for our commands and take over when we see one
+
+  check_actions();
   check_display();
   read_latch();  // Old button read method, kept to make MEM buttons smoother
   hold_latch();
-
-//  static size_t prevQ = 0;
-//  index_t h, t;
-//  size_t Q = ld.QueueSize(h, t);
-//  if (Q != prevQ) {
-//    Serial.print("Q: t=");
-//    Serial.print(t);
-//    Serial.print(" h=");
-//    Serial.print(h);
-//    Serial.print(" size=");
-//    Serial.print(Q);
-//    Serial.print(" [");
-//    micros_t lead;
-//    size_t i=0;
-//    while (ld.q.peek(i++, &lead)) {
-//      Serial.print(lead);
-//      Serial.print(", ");
-//    }
-//    Serial.println("]");
-//    prevQ = Q;
-//  }
-  
-  static uint32_t prev = 0;
-  uint32_t msg = ld.ReadTrace();
-  if (msg) {
-    uint32_t now = millis();
-    Serial.print(now - prev);
-    prev=now;
-    Serial.print("ms  ");
-    Serial.print(ld.MsgType(msg));
-    Serial.print(": ");
-    Serial.println(ld.Decode(msg));
-  }
 }

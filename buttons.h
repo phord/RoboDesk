@@ -38,6 +38,12 @@ void display_buttons(unsigned buttons, const char * msg = "");
 unsigned read_buttons();
 unsigned read_buttons_debounce();
 
+// Control button io pins
+void set_latch(unsigned latch_pins, unsigned long max_latch_time = 15000);
+void break_latch();
+bool is_latched();
+unsigned get_latched();
+
 Action get_action();
 Action get_action_enh();
 const char * action_str(Action action);
