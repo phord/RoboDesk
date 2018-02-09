@@ -136,7 +136,7 @@ void setup() {
     pinMode(LED, OUTPUT);
   #endif
   Serial.begin(115200);
-  Serial.println("Robodesk v0.9  build: " __DATE__ " " __TIME__);
+  Serial.println("Robodesk v1.0  build: " __DATE__ " " __TIME__);
 }
 
 // Record last time the display changed
