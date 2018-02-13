@@ -144,23 +144,24 @@ void check_display() {
   static uint32_t prev = 0;
   uint32_t msg = ld.ReadTrace();
   if (msg) {
+    char buf[80];
     uint32_t now = millis();
-    Serial.print(now - prev);
+    sprintf(buf, "%6lums %s: %s", now - prev, ld.MsgType(msg), ld.Decode(msg));
+    Serial.println(buf);
     prev=now;
-    Serial.print("ms  ");
-    Serial.print(ld.MsgType(msg));
-    Serial.print(": ");
-    Serial.println(ld.Decode(msg));
   }
 
+  // Reset idle-activity timer if display number changes or if any other display activity occurs (i.e. display-ON)
   if (ld.IsNumber(msg)) {
     static uint8_t prev_number;
     auto display_num = ld.GetNumber(msg);
-    if (display_num != prev_number) {
-      prev_number = display_num;
-      last_signal = millis();
+    if (display_num == prev_number) {
+      return;
     }
+    prev_number = display_num;
   }
+  if (msg)
+    last_signal = millis();
 }
 
 void latch(unsigned latch_pins, unsigned long max_latch_time = 15000) {
@@ -170,17 +171,7 @@ void latch(unsigned latch_pins, unsigned long max_latch_time = 15000) {
   last_latch = last_signal = millis();
 }
 
-void read_latch() {
-  if (is_latched()) return;
-
-  auto buttons = read_buttons_debounce();
-
-  // Only latch MEM buttons
-  if (buttons != MEM1 && buttons != MEM2 && buttons != MEM3) buttons = 0;
-
-  if (buttons) latch(buttons);
-}
-
+// Time out stale latches
 void hold_latch() {
   #ifdef LED
     digitalWrite(LED, is_latched());
