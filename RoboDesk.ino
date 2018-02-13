@@ -189,38 +189,50 @@ void hold_latch() {
     break_latch();
     return;
   }
+}
 
-  // Break the latch if some other button is detected
-  unsigned buttons = read_buttons();
-  if (buttons &&  buttons != get_latched()) {
+// Check the buttons
+void check_actions() {
+  // quick-read buttons
+  auto buttons = read_buttons(); 
+  
+  if (buttons && is_latched() && buttons != get_latched()) {
     break_latch();
     
     display_buttons(buttons, "Interrupted");
 
-    // HANG until no buttons are pressed anymore
-    while (buttons) {
-      buttons = read_buttons_debounce();
-    }
+    // Drain all button events from handset interface so the interruption doesn't become a command
+    clear_buttons();
 
     return;
   }
 
   // read and display button changes
-  read_buttons_debounce(); 
-}
+  static unsigned prev = NONE;
+  buttons = read_buttons_debounce();
+   
+  // Ignore unchanged state
+  if (buttons == prev) return;
+  prev = buttons;
+  
+  // If we're latched here, then buttons is same as latched or else buttons is NONE
+  switch (buttons) {
+    case UP:
+    case DOWN:
+      // Add 4s to travel for each button press
+      if (is_latched()) latch(buttons, 4000);
+      else latch(buttons, 1000);
+      break;
+      
+    case MEM1:
+    case MEM2:
+    case MEM3:
+      latch(buttons);
+      break;
 
-// Check for single-click and double-click actions
-void check_actions() {
-  if (!is_latched()) {
-    Action action = get_action();
-    switch (action) {
-      case Mem1: case Mem1_Dbl: latch(MEM1); break;
-      case Mem2: case Mem2_Dbl: latch(MEM2); break;
-      case Mem3: case Mem3_Dbl: latch(MEM3); break;
-      case Up_Dbl:   latch(UP, 4000); break;
-      case Down_Dbl: latch(DOWN, 4000); break;
-      default: break;
-    }
+    // Ignore all other buttons (SET, NONE)
+    default:
+      return;
   }
 }
 
@@ -254,6 +266,5 @@ void loop() {
 
   check_actions();
   check_display();
-  read_latch();  // Old button read method, kept to make MEM buttons smoother
   hold_latch();
 }
